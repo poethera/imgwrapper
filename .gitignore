@@ -19,3 +19,7 @@
 
 # Go workspace file
 go.work
+
+# macos
+.DS_Store
+
