@@ -9,7 +9,7 @@ import (
 )
 
 type ContainerdOperations struct {
-	ctx context.Context
+	Engine string
 }
 
 func Create(ctx context.Context, imgwOpts *types.ImgWOptions) (*types.ImgWContext, error) {
@@ -18,34 +18,34 @@ func Create(ctx context.Context, imgwOpts *types.ImgWOptions) (*types.ImgWContex
 		println(err.Error())
 		return nil, err
 	}
-	//defer cancel()
-	//TODO: add cancel
 
 	imgwCtx := &(types.ImgWContext{
-		client:  client,
-		ctx:     ctx,
-		cancel:  cancel,
-		imgwOps: ContainerdOperations{},
+		Client:  client,
+		Ctx:     ctx,
+		Cancel:  cancel,
+		ImgWOps: &ContainerdOperations{imgwOpts.Engine},
 	})
 
 	return imgwCtx, err
-	//return types.ImgWContext{client, ctx, cancel, &ContainerdOperations{}}, nil
 }
 
-func (c *ContainerdOperations) registry_login(imgwCtx *types.ImgWContext, id string, password string) bool {
+func (c *ContainerdOperations) Registry_Login(imgwCtx *types.ImgWContext, id string, password string) bool {
 	return false
 }
-func (c *ContainerdOperations) registry_logout(imgCtx *types.ImgWContext) bool {
+func (c *ContainerdOperations) Registry_Logout(imgCtx *types.ImgWContext) bool {
 	return false
 }
 
 // image_pull(imgctx *ImgWContext) bool
-func (c *ContainerdOperations) image_push(imgwCtx *types.ImgWContext) bool {
+func (c *ContainerdOperations) Image_Push(imgwCtx *types.ImgWContext) bool {
 	return false
 }
-func (c *ContainerdOperations) image_build(imgwCtx *types.ImgWContext) bool {
+
+func (c *ContainerdOperations) Image_Build(imgwCtx *types.ImgWContext) bool {
 	return false
 }
-func (c *ContainerdOperations) image_commit_for_container(imgctx *types.ImgWContext) bool {
+func (c *ContainerdOperations) Image_Commit_For_Container(imgctx *types.ImgWContext) bool {
+	
+
 	return false
 }

@@ -3,8 +3,8 @@ package types
 import "context"
 
 type ImgWContext struct {
-	client  interface{}
-	ctx     context.Context
-	cancel  context.CancelFunc
-	imgwOps IImgWOperations
+	Client  interface{}
+	Ctx     context.Context
+	Cancel  context.CancelFunc
+	ImgWOps IImgWOperations
 }
