@@ -8,6 +8,7 @@ import (
 	"imgwrapper/pkg/api/types"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/containerd/containerd"
 	ndtypes "github.com/containerd/nerdctl/pkg/api/types"
@@ -15,7 +16,10 @@ import (
 	"github.com/containerd/nerdctl/pkg/clientutil"
 	"github.com/containerd/nerdctl/pkg/cmd/builder"
 	"github.com/containerd/nerdctl/pkg/cmd/container"
+	"github.com/containerd/nerdctl/pkg/cmd/image"
 	"github.com/containerd/nerdctl/pkg/cmd/login"
+	"github.com/containerd/nerdctl/pkg/imgutil/dockerconfigresolver"
+	dockercliconfig "github.com/docker/cli/cli/config"
 )
 
 type ContainerdOperations struct {
@@ -39,13 +43,13 @@ func Create(ctx context.Context, imgwOpts *types.ImgWOptions) (*types.ImgWContex
 	return imgwCtx, err
 }
 
-func (c *ContainerdOperations) Registry_Login(imgwCtx *types.ImgWContext, imgwOpts *types.ImgWOptions, serverAddr string, id string, passwd string) error {
+func (c *ContainerdOperations) Registry_Login(imgwCtx *types.ImgWContext, imgwOpts *types.ImgWOptions) error {
 	Stdout := new(bytes.Buffer)
 	defer func() {
 		Stdout = nil
 	}()
 
-	options := getLoginOptions(getGlobalOptions(imgwOpts), serverAddr, id, passwd)
+	options := getLoginOptions(imgwOpts)
 
 	err := login.Login(imgwCtx.Ctx, options, Stdout)
 	//TODO: error
@@ -59,14 +63,88 @@ func (c *ContainerdOperations) Registry_Login(imgwCtx *types.ImgWContext, imgwOp
 	return err
 }
 
-func (c *ContainerdOperations) Registry_Logout(imgCtx *types.ImgWContext) error {
-	//TODO:
+func (c *ContainerdOperations) Registry_Logout(imgCtx *types.ImgWContext, imgwOpts *types.ImgWOptions) error {
+	Stdout := new(bytes.Buffer)
+	defer func() {
+		Stdout = nil
+	}()
+
+	serverAddress := dockerconfigresolver.IndexServer
+	isDefaultRegistry := true
+
+	if len(imgwOpts.ServerAddress) >= 1 {
+		if !strings.Contains(imgwOpts.ServerAddress, "index.docker.io") {
+			serverAddress = imgwOpts.ServerAddress
+			isDefaultRegistry = false
+		}
+	}
+
+	var (
+		regsToLogout    = []string{}
+		hostnameAddress = serverAddress
+	)
+
+	if !isDefaultRegistry {
+		hostnameAddress = dockerconfigresolver.ConvertToHostname(serverAddress)
+		// the tries below are kept for backward compatibility where a user could have
+		// saved the registry in one of the following format.
+
+		//TODO: changed the order
+		regsToLogout = append(regsToLogout, "https://"+hostnameAddress, "http://"+hostnameAddress, hostnameAddress)
+	} else {
+		regsToLogout = append(regsToLogout, serverAddress)
+	}
+
+	fmt.Fprintf(Stdout, "Removing login credentials for %s\n", hostnameAddress)
+
+	dockerConfigFile, err := dockercliconfig.Load("")
+	if err != nil {
+		return err
+	}
+	errs := make(map[string]error)
+	for _, r := range regsToLogout {
+		if err := dockerConfigFile.GetCredentialsStore(r).Erase(r); err != nil {
+			errs[r] = err
+		}
+	}
+
+	// if at least one removal succeeded, report success. Otherwise report errors
+	if len(errs) == len(regsToLogout) {
+		fmt.Fprintln(Stdout, "WARNING: could not erase credentials:")
+		for k, v := range errs {
+			fmt.Fprintf(Stdout, "%s: %s\n", k, v)
+		}
+	}
+
+	//TODO: Stdout
+	fmt.Println("logout output: \n", Stdout.String())
+
 	return nil
 }
 
 // image_pull(imgctx *ImgWContext) error
-func (c *ContainerdOperations) Image_Push(imgwCtx *types.ImgWContext) error {
+func (c *ContainerdOperations) Image_Push(imgwCtx *types.ImgWContext, imgwOpts *types.ImgWOptions, pushOpts *types.PushOperationOptions) error {
+	client, ok := imgwCtx.Client.(*containerd.Client)
+	if !ok {
+		//TODO: error
+		fmt.Println("invalid client object")
+		return errors.New("invalid client object")
+	}
+
+	options := getImagePushOption(imgwOpts, pushOpts)
+	_stdout := new(bytes.Buffer)
+	options.Stdout = _stdout
+	defer func() {
+		options.Stdout = nil
+	}()
+	if err := image.Push(imgwCtx.Ctx, client, pushOpts.Rawref, options); err != nil {
+		fmt.Println("Image Push error", err.Error())
+		return err
+	}
+
 	//TODO:
+	fmt.Println("push output: \n", _stdout.String())
+
 	return nil
 }
 
@@ -93,7 +171,7 @@ func (c *ContainerdOperations) Image_Build(imgwCtx *types.ImgWContext, imgwOpts 
 	}
 
 	options, err := getBuilderBuildOption(
-		getGlobalOptions(imgwOpts),
+		imgwOpts,
 		buildOpts,
 	)
 	if err != nil {
@@ -121,7 +199,7 @@ func (c *ContainerdOperations) Image_Commit_For_Container(imgwCtx *types.ImgWCon
 	}
 
 	options := getContainerCommitOptions(
-		getGlobalOptions(imgwOpts),
+		imgwOpts,
 		commitOpts,
 	)
 	options.Stdout = new(bytes.Buffer)
@@ -168,7 +246,10 @@ func getGlobalOptions(imgwOpts *types.ImgWOptions) ndtypes.GlobalCommandOptions 
 	}
 }
 
-func getContainerCommitOptions(ndGOpts ndtypes.GlobalCommandOptions, commitOpts *types.CommitOperationOptions) ndtypes.ContainerCommitOptions {
+func getContainerCommitOptions(imgwOpts *types.ImgWOptions, commitOpts *types.CommitOperationOptions) ndtypes.ContainerCommitOptions {
+
+	gopts := getGlobalOptions(imgwOpts)
+
 	author := commitOpts.Author
 	message := commitOpts.Message
 	pause := false
@@ -176,7 +257,7 @@ func getContainerCommitOptions(ndGOpts ndtypes.GlobalCommandOptions, commitOpts 
 
 	return ndtypes.ContainerCommitOptions{
 		Stdout:   os.Stdout, //new(bytes.Buffer), //os.Stdout, //TODO: change
-		GOptions: ndGOpts,
+		GOptions: gopts,
 		Author:   author,
 		Message:  message,
 		Pause:    pause,
@@ -184,8 +265,11 @@ func getContainerCommitOptions(ndGOpts ndtypes.GlobalCommandOptions, commitOpts 
 	}
 }
 
-func getBuilderBuildOption(ndGOpts ndtypes.GlobalCommandOptions, buildOpts *types.BuildOperationOptions) (ndtypes.BuilderBuildOptions, error) {
-	buildKitHost, err := buildkitutil.GetBuildkitHost(ndGOpts.Namespace)
+func getBuilderBuildOption(imgwOpts *types.ImgWOptions, buildOpts *types.BuildOperationOptions) (ndtypes.BuilderBuildOptions, error) {
+
+	gopts := getGlobalOptions(imgwOpts)
+
+	buildKitHost, err := buildkitutil.GetBuildkitHost(gopts.Namespace)
 	if err != nil {
 		return ndtypes.BuilderBuildOptions{}, err
 	}
@@ -209,7 +293,7 @@ func getBuilderBuildOption(ndGOpts ndtypes.GlobalCommandOptions, buildOpts *type
 	quiet := false
 
 	return ndtypes.BuilderBuildOptions{
-		GOptions:     ndGOpts,
+		GOptions:     gopts,
 		BuildKitHost: buildKitHost,
 		BuildContext: buildContext,
 		Output:       output,
@@ -234,6 +318,50 @@ func getBuilderBuildOption(ndGOpts ndtypes.GlobalCommandOptions, buildOpts *type
 	}, nil
 }
 
+func getLoginOptions(imgwOpts *types.ImgWOptions) ndtypes.LoginCommandOptions {
+
+	gopts := getGlobalOptions(imgwOpts)
+
+	return ndtypes.LoginCommandOptions{
+		GOptions:      gopts,
+		ServerAddress: imgwOpts.ServerAddress,
+		Username:      imgwOpts.UserId,
+		Password:      imgwOpts.UserPasswd,
+	}
+}
+
+func getImagePushOption(imgwOpts *types.ImgWOptions, pushOpts *types.PushOperationOptions) ndtypes.ImagePushOptions {
+
+	gopts := getGlobalOptions(imgwOpts)
+
+	platform := []string{"amd64"}
+	allPlatforms := false
+	estargz := false
+	ipfsEnsureImage := false
+	ipfsAddress := ""
+	quiet := false
+	allowNonDist := false
+	signOptions := ndtypes.ImageSignOptions{
+		Provider:        "none",
+		CosignKey:       "",
+		NotationKeyName: "",
+	}
+
+	return ndtypes.ImagePushOptions{
+		GOptions:                       gopts,
+		SignOptions:                    signOptions,
+		Platforms:                      platform,
+		AllPlatforms:                   allPlatforms,
+		Estargz:                        estargz,
+		IpfsEnsureImage:                ipfsEnsureImage,
+		IpfsAddress:                    ipfsAddress,
+		Quiet:                          quiet,
+		AllowNondistributableArtifacts: allowNonDist,
+		Stdout:                         os.Stdout,
+	}
+}
+
+// reserved
 func getImageGlobalOption(gopts ndtypes.GlobalCommandOptions) ndtypes.ImageListOptions {
 
 	var filters []string
@@ -256,14 +384,5 @@ func getImageGlobalOption(gopts ndtypes.GlobalCommandOptions) ndtypes.ImageListO
 		Names:            names,
 		All:              true,
 		Stdout:           os.Stdout,
-	}
-}
-
-func getLoginOptions(gopts ndtypes.GlobalCommandOptions, serverAddr string, id string, passwd string) ndtypes.LoginCommandOptions {
-	return ndtypes.LoginCommandOptions{
-		GOptions:      gopts,
-		ServerAddress: serverAddr,
-		Username:      id,
-		Password:      passwd,
 	}
 }

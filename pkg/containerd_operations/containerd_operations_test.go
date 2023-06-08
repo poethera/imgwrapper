@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/containerd/containerd"
+	"github.com/containerd/nerdctl/pkg/imgutil/dockerconfigresolver"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -50,6 +51,10 @@ func Test_Registry_Login(t *testing.T) {
 		Engine:    "containerd",
 		Namespace: "default", //"k8s.io",
 		Address:   "/run/containerd/containerd.sock",
+
+		ServerAddress: dockerconfigresolver.IndexServer, //sds.redii.net:443
+		UserId:        "poethera",                       //, "sangjiny.nam"
+		UserPasswd:    "",
 	}
 
 	imgwCtx, err := Create(ctx, &imgwOpts)
@@ -58,16 +63,65 @@ func Test_Registry_Login(t *testing.T) {
 	}
 	defer imgwCtx.Cancel()
 
-	ServerAddr := "sds.redii.net:443"
-	Id := "sangjiny.nam"
-	Passwd := ""
-	//println(Passwd)
-	if err := imgwCtx.ImgWOps.Registry_Login(imgwCtx, &imgwOpts, ServerAddr, Id, Passwd); err != nil {
+	if err := imgwCtx.ImgWOps.Registry_Login(imgwCtx, &imgwOpts); err != nil {
 		fmt.Println("Registry_Login failed", err.Error())
 		assert.True(false, "Registry_Login failed", err.Error())
 	}
 
 	assert.True(true, "none")
+}
+
+func Test_Registry_Logout(t *testing.T) {
+	assert := assert.New(t)
+
+	ctx := context.Background()
+	imgwOpts := types.ImgWOptions{
+		Engine:    "containerd",
+		Namespace: "default", //"k8s.io",
+		Address:   "/run/containerd/containerd.sock",
+
+		ServerAddress: dockerconfigresolver.IndexServer, //sds.redii.net:443
+		UserId:        "poethera",                       //, "sangjiny.nam"
+		UserPasswd:    "",
+	}
+
+	imgwCtx, err := Create(ctx, &imgwOpts)
+	if err != nil {
+		t.Errorf("Create Error: %s", err.Error())
+	}
+	defer imgwCtx.Cancel()
+
+	imgwCtx.ImgWOps.Registry_Logout(imgwCtx, &imgwOpts)
+
+	assert.True(true, "Registry_Logout TestCase - WIP")
+}
+
+func Test_Image_Push(t *testing.T) {
+	assert := assert.New(t)
+
+	ctx := context.Background()
+	imgwOpts := types.ImgWOptions{
+		Engine:    "containerd",
+		Namespace: "default", //"k8s.io",
+		Address:   "/run/containerd/containerd.sock",
+	}
+
+	imgwCtx, err := Create(ctx, &imgwOpts)
+	if err != nil {
+		t.Errorf("Create Error: %s", err.Error())
+	}
+	defer imgwCtx.Cancel()
+
+	pushOpts := types.PushOperationOptions{
+		Rawref: "poethera/busybox:cp3", //
+	}
+	if err := imgwCtx.ImgWOps.Image_Push(imgwCtx, &imgwOpts, &pushOpts); err != nil {
+		assert.Nil(err, "Push Operation has failed")
+		fmt.Println("push error: ", err.Error())
+		return
+	}
+
+	assert.True(true, "Image_Push TestCase - Success")
 }
 
 func Test_Image_Build(t *testing.T) {
