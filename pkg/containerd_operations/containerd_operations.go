@@ -15,6 +15,7 @@ import (
 	"github.com/containerd/nerdctl/pkg/clientutil"
 	"github.com/containerd/nerdctl/pkg/cmd/builder"
 	"github.com/containerd/nerdctl/pkg/cmd/container"
+	"github.com/containerd/nerdctl/pkg/cmd/login"
 )
 
 type ContainerdOperations struct {
@@ -38,9 +39,24 @@ func Create(ctx context.Context, imgwOpts *types.ImgWOptions) (*types.ImgWContex
 	return imgwCtx, err
 }
 
-func (c *ContainerdOperations) Registry_Login(imgwCtx *types.ImgWContext, id string, password string) error {
-	//TODO:
-	return nil
+func (c *ContainerdOperations) Registry_Login(imgwCtx *types.ImgWContext, imgwOpts *types.ImgWOptions, serverAddr string, id string, passwd string) error {
+	Stdout := new(bytes.Buffer)
+	defer func() {
+		Stdout = nil
+	}()
+
+	options := getLoginOptions(getGlobalOptions(imgwOpts), serverAddr, id, passwd)
+
+	err := login.Login(imgwCtx.Ctx, options, Stdout)
+	//TODO: error
+	if err != nil {
+		fmt.Println("login error", err.Error())
+	}
+
+	//TODO: Stdout
+	fmt.Println("login output: ", Stdout.String())
+
+	return err
 }
 
 func (c *ContainerdOperations) Registry_Logout(imgCtx *types.ImgWContext) error {
@@ -240,5 +256,14 @@ func getImageGlobalOption(gopts ndtypes.GlobalCommandOptions) ndtypes.ImageListO
 		Names:            names,
 		All:              true,
 		Stdout:           os.Stdout,
+	}
+}
+
+func getLoginOptions(gopts ndtypes.GlobalCommandOptions, serverAddr string, id string, passwd string) ndtypes.LoginCommandOptions {
+	return ndtypes.LoginCommandOptions{
+		GOptions:      gopts,
+		ServerAddress: serverAddr,
+		Username:      id,
+		Password:      passwd,
 	}
 }

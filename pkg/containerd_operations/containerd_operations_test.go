@@ -42,6 +42,34 @@ func Test_Create(t *testing.T) {
 	assert.Equal(imgwOpts.Engine, imgwCtx.ImgWOps.(*ContainerdOperations).Engine, "Engine must be same.")
 }
 
+func Test_Registry_Login(t *testing.T) {
+	assert := assert.New(t)
+
+	ctx := context.Background()
+	imgwOpts := types.ImgWOptions{
+		Engine:    "containerd",
+		Namespace: "default", //"k8s.io",
+		Address:   "/run/containerd/containerd.sock",
+	}
+
+	imgwCtx, err := Create(ctx, &imgwOpts)
+	if err != nil {
+		t.Errorf("Create Error: %s", err.Error())
+	}
+	defer imgwCtx.Cancel()
+
+	ServerAddr := "sds.redii.net:443"
+	Id := "sangjiny.nam"
+	Passwd := ""
+	//println(Passwd)
+	if err := imgwCtx.ImgWOps.Registry_Login(imgwCtx, &imgwOpts, ServerAddr, Id, Passwd); err != nil {
+		fmt.Println("Registry_Login failed", err.Error())
+		assert.True(false, "Registry_Login failed", err.Error())
+	}
+
+	assert.True(true, "none")
+}
+
 func Test_Image_Build(t *testing.T) {
 	//test. buildkitd check -> 확인
 	//test. error dockerfile check -> 확인
@@ -59,6 +87,7 @@ func Test_Image_Build(t *testing.T) {
 	if err != nil {
 		t.Errorf("Create Error: %s", err.Error())
 	}
+	defer imgwCtx.Cancel()
 
 	/*
 		Tag      string
@@ -99,6 +128,7 @@ func Test_Image_Commit_For_Container(t *testing.T) {
 	if err != nil {
 		t.Errorf("Create Error: %s", err.Error())
 	}
+	defer imgwCtx.Cancel()
 
 	/*
 		Req    string
