@@ -7,7 +7,13 @@ import (
 	"imgwrapper/pkg/containerd_operations"
 )
 
-func ImgWCommitContainer(imgwOpts *types.ImgWOptions, commitOpts *types.CommitOperationOptions) error {
+func CommitContainerNPush(imgwOpts *types.ImgWOptions, commitOpts *types.CommitOperationOptions) error {
+	var (
+		pushOpts = types.PushOperationOptions{
+			Rawref: commitOpts.Rawref,
+		}
+	)
+
 	imgwCtx, err := initialize(imgwOpts)
 	if err != nil {
 		fmt.Printf(err.Error())
@@ -15,17 +21,53 @@ func ImgWCommitContainer(imgwOpts *types.ImgWOptions, commitOpts *types.CommitOp
 	}
 
 	defer imgwCtx.Cancel()
-	imgwCtx.ImgWOps.Image_Commit_For_Container(imgwCtx, imgwOpts, commitOpts)
+	if err := imgwCtx.ImgWOps.Image_Commit_For_Container(imgwCtx, imgwOpts, commitOpts); err != nil {
+		return err
+	}
 
-	//TODO: push
+	if err := imgwCtx.ImgWOps.Registry_Login(imgwCtx, imgwOpts); err != nil {
+		return err
+	}
+
+	if err := imgwCtx.ImgWOps.Image_Push(imgwCtx, imgwOpts, &pushOpts); err != nil {
+		return err
+	}
+
+	imgwCtx.ImgWOps.Registry_Logout(imgwCtx, imgwOpts)
 
 	return nil
 }
 
-func ImgWBuild(imgwCtx *types.ImgWContext) {
+func BuildNPush(imgwOpts *types.ImgWOptions, buildOpts *types.BuildOperationOptions) error {
 	//TODO: build
+	var (
+		pushOpts = types.PushOperationOptions{
+			Rawref: buildOpts.Tag,
+		}
+	)
 
-	//TODO: push
+	imgwCtx, err := initialize(imgwOpts)
+	if err != nil {
+		fmt.Printf(err.Error())
+		return err
+	}
+
+	defer imgwCtx.Cancel()
+	if err := imgwCtx.ImgWOps.Image_Build(imgwCtx, imgwOpts, buildOpts); err != nil {
+		return err
+	}
+
+	if err := imgwCtx.ImgWOps.Registry_Login(imgwCtx, imgwOpts); err != nil {
+		return err
+	}
+
+	if err := imgwCtx.ImgWOps.Image_Push(imgwCtx, imgwOpts, &pushOpts); err != nil {
+		return err
+	}
+
+	imgwCtx.ImgWOps.Registry_Logout(imgwCtx, imgwOpts)
+
+	return nil
 }
 
 func initialize(imgwOpts *types.ImgWOptions) (*types.ImgWContext, error) {
